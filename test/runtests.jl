@@ -1,6 +1,7 @@
 using CryptoTools
 using Test
+using SafeTestsets
 
 @testset "CryptoTools.jl" begin
-    # Write your tests here.
+    @time @safetestset "Basics" begin include("BlockCipher.jl") end
 end
