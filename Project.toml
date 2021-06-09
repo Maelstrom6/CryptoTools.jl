@@ -1,0 +1,13 @@
+name = "CryptoTools"
+uuid = "d650bed8-76c2-4bd7-9990-f018231c0e78"
+authors = ["Chris du Plessis"]
+version = "0.1.0"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
