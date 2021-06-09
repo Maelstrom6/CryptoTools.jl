@@ -1,5 +1,5 @@
 module CryptoTools
 
-# Write your package code here.
+include("BlockCipher.jl")
 
 end
