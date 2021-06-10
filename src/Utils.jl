@@ -1,2 +1,38 @@
-success
-isprime()
+function pad(bytes::Vector{UInt8}, bit_size)
+    length_to_add = cld(bit_size, 16) - length(bytes)
+    return vcat(bytes, repeat([0x00], length_to_add))
+end
+
+"""
+Galois Field (256) Multiplication of two Bytes
+"""
+function gmul(a::UInt8, b::UInt8)
+    p = 0x00
+    for _ in 1:8
+        if b & 1 != 0x00
+            p = xor(p, a)
+        end
+
+        hi_bit_set = (a & 0x80) != 0x00
+        a <<= 0x01
+        if hi_bit_set
+            a = xor(a, 0x1b)
+        end
+        b >>= 0x01
+    end
+    return p
+end
+
+s = [
+    0xea 0x04 0x65 0x85;
+    0x83 0x45 0x5d 0x96;
+    0x5c 0x33 0x98 0xb0;
+    0xf0 0x2d 0xad 0xc5;
+]
+
+k = [
+    0x0f, 0x15, 0x71, 0xc9,
+    0x47, 0xd9, 0xe8, 0x59,
+    0x0c, 0xb7, 0xad, 0xd6,
+    0xaf, 0x7f, 0x67, 0x98,
+]

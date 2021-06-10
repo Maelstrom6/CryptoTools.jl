@@ -124,7 +124,10 @@ Does not provide much information on the cost of the attack
 because the attacker can break the cipher with less than expected
 number of operations.
 
-
+Confusion means that the input
+(plaintext and encryption key) undergoes complex transformations, and
+diffusion means that these transformations depend equally on all bits of
+the input.
 """
 abstract type Cipher end
 encrypt(cipher, plaintext::String) = String(encrypt(cipher, Vector{UInt8}(plaintext)))
@@ -154,3 +157,77 @@ end
 #xor(a::Array{Uint8, 1}, b::Array{Uint8, 1}) = xor()
 encrypt(cipher::OneTimePad, plaintext::Vector{UInt8}) = xor.(cipher.key, plaintext)
 decrypt(cipher::OneTimePad, ciphertext::Vector{UInt8}) = xor.(cipher.key, ciphertext)
+
+struct FeiselScheme <: Cipher
+    key::Vector{UInt8}
+end
+
+function encrypt(cipher::FeiselScheme, plaintext::Vector{UInt8}, block_size=64, rounds=15)
+    left = plaintext[1:(block_size ÷ 2)]
+    right = plaintext[(block_size ÷ 2 + 1):end]
+    subkeys = rijndael_key_schedule(cipher.key, rounds)
+
+    for i in 1:rounds
+        temp = xor.(left, round_function(right, subkeys[i]))
+        left = right
+        right = temp
+    end
+end
+
+"""
+The cipher key used for encryption is 128, 192 or 256 bits long.
+"""
+struct AES <: Cipher
+    key::Vector{UInt8}
+end
+
+function encrypt(cipher::AES, plaintext::Vector{UInt8}, block_size=128, rounds=nothing)
+    n = length(cipher.key) * 8
+
+    # Determine the number of rounds to run
+    rounds === nothing && n == 128 ? rounds = 10 : nothing
+    rounds === nothing && n == 192 ? rounds = 12 : nothing
+    rounds === nothing && n == 256 ? rounds = 14 : nothing
+
+    # Generate the roundkeys from the key
+    subkeys = rijndael_key_schedule(cipher.key, rounds)
+    roundkeys = [hcat(subkeys[i:(i+3)]...) for i in 1:4:length(subkeys)]  # transposable
+
+    # Define the 4 central functions
+    xorkeys(s, i) = xor.(s, roundkeys[i])
+    subbytes(s) = sbox(s)
+    function shiftrows(s)
+        result = []
+        n = size(s, 1)
+        for (i, row) in enumerate(eachrow(s))
+            # push!(result, vcat(row[(n-i+2):end], row[1:(n-i+1)]))
+            push!(result, vcat(row[i:end], row[1:(i-1)]))
+        end
+        return hcat(result...)'
+    end
+    function mixcolumns(s)  # https://en.wikipedia.org/wiki/Rijndael_MixColumns
+        ss = copy(s)
+        for j in 1:size(s, 2)
+            ss[1, j] = xor(gmul(0x02, s[1, j]), gmul(0x03, s[2, j]), s[3, j], s[4, j])
+            ss[2, j] = xor(s[1, j], gmul(0x02, s[2, j]), gmul(0x03, s[3, j]), s[4, j])
+            ss[3, j] = xor(s[1, j], s[2, j], gmul(0x02, s[3, j]), gmul(0x03, s[4, j]))
+            ss[4, j] = xor(gmul(0x03, s[1, j]), s[2, j], s[3, j], gmul(0x02, s[4, j]))
+        end
+        return ss
+    end
+
+    # main algo
+    s = reshape(plaintext, (4, 4))  # transposable
+    s = xorkeys(s, 1)
+    for i in 2:rounds
+        s = subbytes(s)
+        s = shiftrows(s)
+        s = mixcolumns(s)
+        s = xorkeys(s, i)
+    end
+    s = subbytes(s)
+    s = shiftrows(s)
+    s = xorkeys(s, rounds+1)
+
+    return reshape(s, 16)  # transposable
+end
