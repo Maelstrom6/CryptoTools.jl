@@ -176,18 +176,56 @@ end
 
 """
 The cipher key used for encryption is 128, 192 or 256 bits long.
+
+Without KeyExpansion, all rounds would use the same key, K, and
+AES would be vulnerable to slide attacks.
+Without AddRoundKey, encryption wouldn’t depend on the key;
+hence, anyone could decrypt any ciphertext without the key.
+SubBytes brings nonlinear operations, which add cryptographic
+strength. Without it, AES would just be a large system of linear
+equations that is solvable using high-school algebra.
+Without ShiftRows, changes in a given column would never affect
+the other columns, meaning you could break AES by building four
+232-element codebooks for each column. (Remember that in a secure
+block cipher, flipping a bit in the input should affect all the output
+bits.)
+Without MixColumns, changes in a byte would not affect any other
+bytes of the state. A chosen-plaintext attacker could then decrypt any
+ciphertext after storing 16 lookup tables of 256 bytes each that hold
+the encrypted values of each possible value of a byte.
+
+You should never encrypt blocks independently. This reveals patterns and
+identical plaintext values because the ciphertext will be the same. This is
+called electronic codebook and should be avoided. One should rather use
+cipher block chaining.
 """
 struct AES <: Cipher
     key::Vector{UInt8}
+    rounds::Int64
 end
 
-function encrypt(cipher::AES, plaintext::Vector{UInt8}, block_size=128, rounds=nothing)
-    n = length(cipher.key) * 8
+function AES(key)
+    n = length(key) * 8
 
     # Determine the number of rounds to run
-    rounds === nothing && n == 128 ? rounds = 10 : nothing
-    rounds === nothing && n == 192 ? rounds = 12 : nothing
-    rounds === nothing && n == 256 ? rounds = 14 : nothing
+    n == 128 ? rounds = 10 : nothing
+    n == 192 ? rounds = 12 : nothing
+    n == 256 ? rounds = 14 : nothing
+    return AES(key, rounds)
+end
+
+function encrypt(cipher::AES, plaintext::Vector{UInt8})
+    plaintext = pad(plaintext, 256cld(length(plaintext), 16))
+    if length(plaintext) > 16
+        result = encrypt(cipher, plaintext[1:16])
+        for i in 17:16:16fld(length(plaintext), 16)
+            input = xor.(plaintext[i:(i+15)], result[(i-16):(i-1)])
+            append!(result, encrypt(cipher, input))
+        end
+        return result
+    end
+
+    rounds = cipher.rounds
 
     # Generate the roundkeys from the key
     subkeys = rijndael_key_schedule(cipher.key, rounds)
@@ -228,6 +266,62 @@ function encrypt(cipher::AES, plaintext::Vector{UInt8}, block_size=128, rounds=n
     s = subbytes(s)
     s = shiftrows(s)
     s = xorkeys(s, rounds+1)
+
+    return reshape(s, 16)  # transposable
+end
+
+function decrypt(cipher::AES, ciphertext::Vector{UInt8})
+    ciphertext = pad(ciphertext, 256cld(length(ciphertext), 16))
+    if length(ciphertext) > 16
+        result = decrypt(cipher, ciphertext[1:16])
+        for i in 17:16:16fld(length(ciphertext), 16)
+            input = decrypt(cipher, ciphertext[i:(i+15)])
+            input = xor.(input, ciphertext[(i-16):(i-1)])
+            append!(result, input)
+        end
+        return result
+    end
+
+    rounds = cipher.rounds
+
+    # Generate the roundkeys from the key
+    subkeys = rijndael_key_schedule(cipher.key, rounds)
+    roundkeys = [hcat(subkeys[i:(i+3)]...) for i in 1:4:length(subkeys)]  # transposable
+
+    # Define the 4 central functions
+    xorkeys(s, i) = xor.(s, roundkeys[i])
+    invsubbytes(s) = invsbox(s)
+    function invshiftrows(s)
+        result = []
+        n = size(s, 1)
+        for (i, row) in enumerate(eachrow(s))
+            push!(result, vcat(row[(n-i+2):end], row[1:(n-i+1)]))
+        end
+        return hcat(result...)'
+    end
+    function invmixcolumns(s)  # https://en.wikipedia.org/wiki/Rijndael_MixColumns
+        ss = copy(s)
+        for j in 1:size(s, 2)
+            ss[1, j] = xor(gmul(0x0e, s[1, j]), gmul(0x0b, s[2, j]), gmul(0x0d, s[3, j]), gmul(0x09, s[4, j]))
+            ss[2, j] = xor(gmul(0x09, s[1, j]), gmul(0x0e, s[2, j]), gmul(0x0b, s[3, j]), gmul(0x0d, s[4, j]))
+            ss[3, j] = xor(gmul(0x0d, s[1, j]), gmul(0x09, s[2, j]), gmul(0x0e, s[3, j]), gmul(0x0b, s[4, j]))
+            ss[4, j] = xor(gmul(0x0b, s[1, j]), gmul(0x0d, s[2, j]), gmul(0x09, s[3, j]), gmul(0x0e, s[4, j]))
+        end
+        return ss
+    end
+
+    # main algo
+    s = reshape(ciphertext, (4, 4))  # transposable
+    s = xorkeys(s, rounds+1)
+    s = invshiftrows(s)
+    s = invsubbytes(s)
+    for i in rounds:-1:2
+        s = xorkeys(s, i)
+        s = invmixcolumns(s)
+        s = invshiftrows(s)
+        s = invsubbytes(s)
+    end
+    s = xorkeys(s, 1)
 
     return reshape(s, 16)  # transposable
 end

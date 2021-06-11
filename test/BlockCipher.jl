@@ -30,4 +30,14 @@ end
     key = hex2bytes("2c6202f9a582668aa96d511862d8a279")
     cipher = AES(key)
     @test encrypt(cipher, plaintext) == hex2bytes("12b620bb5eddcde9a07523e59292a6d7")
+
+    plaintext = rand(RandomDevice(), UInt8, 16)
+    key = rand(RandomDevice(), UInt8, 16)
+    cipher = AES(key)
+    @test decrypt(cipher, encrypt(cipher, plaintext)) == plaintext
+
+    @test decrypt(cipher, encrypt(cipher, [0x00])) == hex2bytes("00000000000000000000000000000000")
+
+    plaintext = repeat(hex2bytes("00000000000000000000000000000000"), 2)
+    @test decrypt(cipher, encrypt(cipher, plaintext)) == plaintext
 end

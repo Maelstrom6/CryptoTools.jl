@@ -23,6 +23,8 @@ function gmul(a::UInt8, b::UInt8)
     return p
 end
 
+s = [UInt8(i+4j-5) for i in 1:4, j in 1:4]
+
 s = [
     0xea 0x04 0x65 0x85;
     0x83 0x45 0x5d 0x96;
