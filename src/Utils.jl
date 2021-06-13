@@ -1,6 +1,47 @@
-function pad(bytes::Vector{UInt8}, bit_size)
-    length_to_add = cld(bit_size, 16) - length(bytes)
-    return vcat(bytes, repeat([0x00], length_to_add))
+"""
+Pads so that the length of the result is a multiple of block size in bytes.
+A block size of 10 represents 10 bytes that make up a single block.
+
+Padding for block ciphers is specified in the PKCS#7 standard and in RFC 5652.
+Method can be
+- :zero
+- :pkcs7
+- :iso
+
+"""
+function pad(bytes::Vector{UInt8}, block_size::Int64, method=:pkcs7)
+    length_to_add = block_size - (length(bytes) % block_size)
+
+    padding = repeat([0x00], length_to_add)
+    if method == :zero
+        padding = repeat([0x00], length_to_add)
+    elseif method == :pkcs7
+        padding = repeat([UInt8(length_to_add)], length_to_add)
+    elseif method == :iso
+        padding = vcat(0x80, repeat([0x00], length_to_add-1))
+    elseif method == :ansi
+        padding = vcat(repeat([0x00], length_to_add-1), [UInt8(length_to_add)])
+    end
+    return vcat(bytes, padding)
+end
+
+"""
+This is not vulnerable to padded oracle attacks because it does not fail
+if the padding is invalid.
+"""
+function unpad(bytes::Vector{UInt8}, method=:pkcs7)
+    if method == :zero
+        throw(PaddingError(method, "Does not support unpad."))
+    elseif method == :pkcs7
+        return bytes[1:(end-bytes[end])]
+    elseif method == :iso
+        while padding[end] != 0x80
+            padding = padding[1:(end-1)]
+        end
+        return padding[1:(end-1)]
+    elseif method == :ansi
+        return bytes[1:(end-bytes[end])]
+    end
 end
 
 """

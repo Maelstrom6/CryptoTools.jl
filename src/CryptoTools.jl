@@ -1,5 +1,6 @@
 module CryptoTools
 
+using Base: aligned_sizeof, PaddingError, padding
 export encrypt, decrypt
 export OneTimePad, AES
 

@@ -177,6 +177,8 @@ end
 """
 The cipher key used for encryption is 128, 192 or 256 bits long.
 
+If you want to encrypt only a single block of exactly 16 bytes, use padding=false.
+
 Without KeyExpansion, all rounds would use the same key, K, and
 AES would be vulnerable to slide attacks.
 Without AddRoundKey, encryption wouldn’t depend on the key;
@@ -214,13 +216,14 @@ function AES(key)
     return AES(key, rounds)
 end
 
-function encrypt(cipher::AES, plaintext::Vector{UInt8})
-    plaintext = pad(plaintext, 256cld(length(plaintext), 16))
+function encrypt(cipher::AES, plaintext::Vector{UInt8}, padding=true)
+    padding ? plaintext = pad(plaintext, 16) : nothing
+
     if length(plaintext) > 16
-        result = encrypt(cipher, plaintext[1:16])
+        result = encrypt(cipher, plaintext[1:16], false)  # should be xored with nonce
         for i in 17:16:16fld(length(plaintext), 16)
             input = xor.(plaintext[i:(i+15)], result[(i-16):(i-1)])
-            append!(result, encrypt(cipher, input))
+            append!(result, encrypt(cipher, input, false))
         end
         return result
     end
@@ -270,15 +273,19 @@ function encrypt(cipher::AES, plaintext::Vector{UInt8})
     return reshape(s, 16)  # transposable
 end
 
-function decrypt(cipher::AES, ciphertext::Vector{UInt8})
-    ciphertext = pad(ciphertext, 256cld(length(ciphertext), 16))
+"""
+If you encrypted only a single block of exactly 16 bytes, use padding=false.
+"""
+function decrypt(cipher::AES, ciphertext::Vector{UInt8}, padding=true)
     if length(ciphertext) > 16
-        result = decrypt(cipher, ciphertext[1:16])
+        result = decrypt(cipher, ciphertext[1:16], false)
         for i in 17:16:16fld(length(ciphertext), 16)
-            input = decrypt(cipher, ciphertext[i:(i+15)])
+            input = decrypt(cipher, ciphertext[i:(i+15)], false)
             input = xor.(input, ciphertext[(i-16):(i-1)])
             append!(result, input)
         end
+
+        padding ? result = unpad(result) : nothing
         return result
     end
 
@@ -322,6 +329,8 @@ function decrypt(cipher::AES, ciphertext::Vector{UInt8})
         s = invsubbytes(s)
     end
     s = xorkeys(s, 1)
+    s = reshape(s, 16) # transposable
 
-    return reshape(s, 16)  # transposable
+    padding ? s = unpad(s) : nothing
+    return s
 end
