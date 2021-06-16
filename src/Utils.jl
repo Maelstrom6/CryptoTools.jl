@@ -64,18 +64,28 @@ function gmul(a::UInt8, b::UInt8)
     return p
 end
 
-s = [UInt8(i+4j-5) for i in 1:4, j in 1:4]
+function eval_poly(polynomial, x, modulus)
+    accum = zero(eltype(polynomial))
+    for coeff in reverse(polynomial)
+        accum *= x
+        accum += coeff
+        accum %= modulus
+    end
+    return accum
+end
 
-s = [
-    0xea 0x04 0x65 0x85;
-    0x83 0x45 0x5d 0x96;
-    0x5c 0x33 0x98 0xb0;
-    0xf0 0x2d 0xad 0xc5;
-]
+function lagrange_interpolate(x, xs, ys, modulus)
+    k = length(xs)
+    nums = []
+    dens = []
+    for i in 1:k
+        curr = xs[i]
+        others = vcat(xs[1:(i-1)], xs[(i+1):end])
+        push!(nums, prod(x .- others))
+        push!(dens, prod(curr .- others))
+    end
 
-k = [
-    0x0f, 0x15, 0x71, 0xc9,
-    0x47, 0xd9, 0xe8, 0x59,
-    0x0c, 0xb7, 0xad, 0xd6,
-    0xaf, 0x7f, 0x67, 0x98,
-]
+    den = prod(dens)
+    num = sum(nums[i] * den * ys[i] * invmod(dens[i], modulus) % modulus for i in 1:k)
+    return (num * invmod(den, modulus) % modulus + modulus) % modulus
+end

@@ -1,5 +1,3 @@
-using Core: ComplexF64
-
 """
 Stream ciphers produce a pseudorandom stream of bits called the
 keystream. The keystream is XORed to a plaintext to encrypt it and then
@@ -44,9 +42,11 @@ struct SteamCipher
  end
 
  struct ChaCha20
-    key::Vector{UInt32}
-    nonce::Vector{UInt32}
+    key::Vector{UInt32}  # 256 bit
+    nonce::Vector{UInt32}  # 96 bit
  end
+
+ ChaCha20(key::Vector{UInt8}, nonce::Vector{UInt8}) = ChaCha20(reinterpret(UInt32, key), reinterpret(UInt32, nonce))
 
  function encrypt(cipher::ChaCha20, plaintext::Vector{UInt8}, rounds::Int64=10)
     function quarter_round!(s, a, b, c, d)
@@ -71,8 +71,8 @@ struct SteamCipher
     k = cipher.key
     n = cipher.nonce
 
-    result = Array{UInt32}[]
-    for counter in 0x00000000:(length(plaintext)/64)
+    result = UInt8[]
+    for counter in 0x00000001:cld(length(plaintext), 64)
         s0 = [
             0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
             k[1], k[2], k[3], k[4],
@@ -90,6 +90,10 @@ struct SteamCipher
         end
     end
 
-    ciphertext = xor.(plaintext, result)
+    ciphertext = xor.(plaintext, result[1:length(plaintext)])
     return ciphertext
+ end
+
+ function decrypt(cipher::ChaCha20, ciphertext::Vector{UInt8}, rounds::Int64=10)
+    return encrypt(cipher, ciphertext, 20-rounds)
  end

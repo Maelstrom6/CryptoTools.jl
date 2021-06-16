@@ -2,10 +2,6 @@ using CryptoTools
 using Test
 using Random
 
-@testset "Baseline" begin
-    @test 1 == 1
-end
-
 @testset "OneTimePad" begin
     plaintext = "I am plaintext"
     key = rand(RandomDevice(), UInt8, length(plaintext))
